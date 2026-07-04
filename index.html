@@ -48,7 +48,15 @@ function updateRepeatUI(){repeatCount.textContent=repeatLeft+'/'+maxRepeats;repe
 function updateStats(){streakEl.textContent=streak;scoreEl.textContent=score;rateEl.textContent=total?Math.round(good/total*100)+'%':'0%'}
 function setFeedback(a,b,cls){feedback.className='feedback '+cls;feedback.innerHTML=a+'<small>'+b+'</small>'}
 const streakEl=document.getElementById('streak'),scoreEl=document.getElementById('score'),rateEl=document.getElementById('rate');
-function addHistory(ch,ok){let r=document.createElement('div');r.className='row';r.innerHTML=`<span>${DE[ch.root%12]} ${CHORDS[ch.type].short}<br><small>${ch.notes.map(m=>DE[m%12]).join(' · ')}</small></span><b class="${ok?'ok':'no'}">${ok?'✔':'✘'}</b>`;history.prepend(r);while(history.children.length>12)history.lastChild.remove()}
+function addHistory(ch,ok){
+  const historyBox=document.getElementById('history');
+  if(!historyBox||!ch)return;
+  let r=document.createElement('div');
+  r.className='row';
+  r.innerHTML=`<span>${DE[ch.root%12]} ${CHORDS[ch.type].short}<br><small>${ch.notes.map(m=>DE[m%12]).join(' · ')}</small></span><b class="${ok?'ok':'no'}">${ok?'✔':'✘'}</b>`;
+  historyBox.prepend(r);
+  while(historyBox.children.length>12)historyBox.lastChild.remove();
+}
 function polar(cx,cy,r,a){let rad=(a-90)*Math.PI/180;return [cx+r*Math.cos(rad),cy+r*Math.sin(rad)]}
 function arcPath(i,n){let start=i*360/n,end=(i+1)*360/n,gap=.8;let [x1,y1]=polar(250,250,236,start+gap),[x2,y2]=polar(250,250,236,end-gap),[x3,y3]=polar(250,250,130,end-gap),[x4,y4]=polar(250,250,130,start+gap);let large=end-start>180?1:0;return `M${x1},${y1} A236,236 0 ${large},1 ${x2},${y2} L${x3},${y3} A130,130 0 ${large},0 ${x4},${y4} Z`}
 function renderWheel(){const list=LEVELS[level.value];wheel.innerHTML='';list.forEach((type,i)=>{let g=document.createElementNS('http://www.w3.org/2000/svg','g');g.classList.add('slice');g.dataset.type=type;let p=document.createElementNS('http://www.w3.org/2000/svg','path');p.setAttribute('d',arcPath(i,list.length));let [tx,ty]=polar(250,250,184,(i+.5)*360/list.length);let text=document.createElementNS('http://www.w3.org/2000/svg','text');text.setAttribute('x',tx);text.setAttribute('y',ty);text.textContent=CHORDS[type].short;g.append(p,text);g.onclick=()=>answer(type);wheel.append(g)})}
@@ -64,8 +72,60 @@ function drawStaff(svg){const y0=56,gap=14;for(let i=0;i<5;i++){let l=document.c
 function midiStep(m){const steps=[0,0,1,1,2,3,3,4,4,5,5,6];return (Math.floor(m/12)-1)*7+steps[m%12]}
 function noteY(m){const bottomLineE4=4*7+2;return 112-(midiStep(m)-bottomLineE4)*7}
 function accidentalText(m){return [1,3,6,8,10].includes(m%12)?'♯':''}
-function drawNote(svg,m,x,cls,label){const y=noteY(m),acc=accidentalText(m);for(let yy=Math.ceil((y-112)/14)*14+112;yy<56;yy+=14){let l=document.createElementNS('http://www.w3.org/2000/svg','line');l.setAttribute('x1',x-22);l.setAttribute('x2',x+22);l.setAttribute('y1',yy);l.setAttribute('y2',yy);l.setAttribute('class','ledgerLine');svg.append(l)}for(let yy=126;yy<=y;yy+=14){let l=document.createElementNS('http://www.w3.org/2000/svg','line');l.setAttribute('x1',x-22);l.setAttribute('x2',x+22);l.setAttribute('y1',yy);l.setAttribute('y2',yy);l.setAttribute('class','ledgerLine');svg.append(l)}if(acc){let a=document.createElementNS('http://www.w3.org/2000/svg','text');a.setAttribute('x',x-34);a.setAttribute('y',y+6);a.setAttribute('fill','#101631');a.setAttribute('font-size','28');a.setAttribute('font-weight','900');a.textContent=acc;svg.append(a)}let e=document.createElementNS('http://www.w3.org/2000/svg','ellipse');e.setAttribute('cx',x);e.setAttribute('cy',y);e.setAttribute('rx',13);e.setAttribute('ry',9);e.setAttribute('transform',`rotate(-18 ${x} ${y})`);e.setAttribute('class','noteHead '+cls);svg.append(e);let stem=document.createElementNS('http://www.w3.org/2000/svg','line');stem.setAttribute('x1',x+12);stem.setAttribute('x2',x+12);stem.setAttribute('y1',y);stem.setAttribute('y2',y-46);stem.setAttribute('class','noteStem');svg.append(stem);let lab=document.createElementNS('http://www.w3.org/2000/svg','text');lab.setAttribute('x',x);lab.setAttribute('y',174);lab.setAttribute('class','noteLabel');lab.textContent=label;svg.append(lab)}
-function updateNotation(notes,title='Akkord'){const svg=notation;svg.innerHTML='';drawStaff(svg);const start=260,spacing=38;notes.forEach((m,i)=>drawNote(svg,m,start+i*spacing,i===0?'root':'chord',DE[m%12]+Math.floor(m/12-1)));let txt=document.createElementNS('http://www.w3.org/2000/svg','text');txt.setAttribute('x',380);txt.setAttribute('y',30);txt.setAttribute('fill','#334155');txt.setAttribute('font-size','18');txt.setAttribute('font-weight','900');txt.setAttribute('text-anchor','middle');txt.textContent=title;svg.append(txt)}
+function accidentalText(m){return [1,3,6,8,10].includes(m%12)?'♯':''}
+function drawNote(svg,m,x,cls,label,accX=null){
+  const y=noteY(m),acc=accidentalText(m);
+  for(let yy=Math.ceil((y-112)/14)*14+112;yy<56;yy+=14){
+    let l=document.createElementNS('http://www.w3.org/2000/svg','line');
+    l.setAttribute('x1',x-22);l.setAttribute('x2',x+22);l.setAttribute('y1',yy);l.setAttribute('y2',yy);
+    l.setAttribute('class','ledgerLine');svg.append(l)
+  }
+  for(let yy=126;yy<=y;yy+=14){
+    let l=document.createElementNS('http://www.w3.org/2000/svg','line');
+    l.setAttribute('x1',x-22);l.setAttribute('x2',x+22);l.setAttribute('y1',yy);l.setAttribute('y2',yy);
+    l.setAttribute('class','ledgerLine');svg.append(l)
+  }
+  if(acc){
+    let a=document.createElementNS('http://www.w3.org/2000/svg','text');
+    a.setAttribute('x',accX!==null?accX:x-42);
+    a.setAttribute('y',y+1);
+    a.setAttribute('fill','#101631');
+    a.setAttribute('font-size','27');
+    a.setAttribute('font-weight','900');
+    a.setAttribute('text-anchor','middle');
+    a.setAttribute('dominant-baseline','middle');
+    a.textContent=acc;
+    svg.append(a)
+  }
+  let e=document.createElementNS('http://www.w3.org/2000/svg','ellipse');
+  e.setAttribute('cx',x);e.setAttribute('cy',y);e.setAttribute('rx',13);e.setAttribute('ry',9);
+  e.setAttribute('transform',`rotate(-18 ${x} ${y})`);
+  e.setAttribute('class','noteHead '+cls);svg.append(e);
+  let stem=document.createElementNS('http://www.w3.org/2000/svg','line');
+  stem.setAttribute('x1',x+12);stem.setAttribute('x2',x+12);stem.setAttribute('y1',y);stem.setAttribute('y2',y-46);
+  stem.setAttribute('class','noteStem');svg.append(stem);
+  let lab=document.createElementNS('http://www.w3.org/2000/svg','text');
+  lab.setAttribute('x',x);lab.setAttribute('y',174);lab.setAttribute('class','noteLabel');
+  lab.textContent=label;svg.append(lab)
+}
+function updateNotation(notes,title='Akkord'){
+  const svg=notation;
+  svg.innerHTML='';
+  drawStaff(svg);
+  // Mehr horizontaler Raum: Vorzeichen stehen in eigenen Spalten vor den Notenköpfen,
+  // damit sie weder mit Notenköpfen noch mit Notenhälsen kollidieren.
+  const start=230,spacing=72;
+  notes.forEach((m,i)=>{
+    const acc=accidentalText(m);
+    const x=start+i*spacing;
+    const accX=acc?x-38:null;
+    drawNote(svg,m,x,i===0?'root':'chord',DE[m%12]+Math.floor(m/12-1),accX);
+  });
+  let txt=document.createElementNS('http://www.w3.org/2000/svg','text');
+  txt.setAttribute('x',380);txt.setAttribute('y',30);txt.setAttribute('fill','#334155');
+  txt.setAttribute('font-size','18');txt.setAttribute('font-weight','900');txt.setAttribute('text-anchor','middle');
+  txt.textContent=title;svg.append(txt)
+}
 volRange.oninput=()=>{if(pianoGain)pianoGain.volume.value=+volRange.value};revRange.oninput=()=>{if(pianoReverb)pianoReverb.wet.value=+revRange.value/100};
 newBtn.onclick=newChord;repeatBtn.onclick=repeatChord;showBtn.onclick=()=>{if(current){showSolution(current.type,true);playCurrent()}};hearBtn.onclick=()=>{trainMode='hear';hearBtn.classList.add('active');buildBtn.classList.remove('active');buildBox.style.display='none';setFeedback('Akkord erkennen','Höre den Akkord und wähle den Typ.','')};buildBtn.onclick=()=>{trainMode='build';buildBtn.classList.add('active');hearBtn.classList.remove('active');buildBox.style.display='grid';setFeedback('Akkord aufbauen','Klicke die passenden Klaviertasten.','')};checkBuildBtn.onclick=checkBuild;clearBuildBtn.onclick=clearBuild;playBuildBtn.onclick=playCurrent;level.onchange=()=>{renderWheel();current=null;clearNotation();clearHighlights();centerText.textContent='Bereit?';centerSub.textContent='Drücke „Neuer Akkord“'};
 document.addEventListener('keydown',e=>{const tag=(e.target&&e.target.tagName)||'';if(tag==='INPUT'||tag==='SELECT'||tag==='TEXTAREA')return;if(e.code==='Space'){e.preventDefault();repeatChord()}if(e.key.toLowerCase()==='n')newChord();if(e.key.toLowerCase()==='l'){if(current){showSolution(current.type,true);playCurrent()}}});
