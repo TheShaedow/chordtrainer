@@ -38,12 +38,51 @@ async function initPiano(){if(pianoReady||pianoLoading)return;pianoLoading=true;
 function fallbackPiano(m,t=0,dur=1.2,vel=.35){const c=ctx(),now=c.currentTime+t;[1,2,3,4,5,7].forEach((h,i)=>{let o=c.createOscillator(),g=c.createGain(),f=c.createBiquadFilter();o.type=i?'triangle':'sine';o.frequency.value=freq(m)*h;f.type='lowpass';f.frequency.setValueAtTime(3400/(i+1),now);g.gain.setValueAtTime(0,now);g.gain.linearRampToValueAtTime([.42,.16,.08,.045,.025,.014][i]*vel,now+.008);g.gain.exponentialRampToValueAtTime(.0001,now+dur*(i?.65:1.25));o.connect(f);f.connect(g);g.connect(c.destination);o.start(now);o.stop(now+dur+.2)})}
 function piano(m,t=0,dur=1.4,vel=.75){initPiano();if(pianoReady&&pianoSampler){pianoSampler.triggerAttackRelease(midiToNote(m),dur,Tone.now()+t,vel)}else fallbackPiano(m,t,dur,vel)}
 function chordNotes(root,type){return CHORDS[type].iv.map(x=>root+x).map(m=>m>84?m-12:m)}
+const LETTERS=['C','D','E','F','G','A','H'];
+const NAT_PC={C:0,D:2,E:4,F:5,G:7,A:9,H:11};
+const ROOT_LETTER_BY_PC={0:'C',1:'C',2:'D',3:'D',4:'E',5:'F',6:'F',7:'G',8:'G',9:'A',10:'A',11:'H'};
+const CHORD_DEGREES={
+  major:[0,2,4], minor:[0,2,4], dim:[0,2,4], aug:[0,2,4],
+  dom7:[0,2,4,6], maj7:[0,2,4,6], min7:[0,2,4,6], halfdim:[0,2,4,6], dim7:[0,2,4,6],
+  sus2:[0,1,4], sus4:[0,3,4], add9:[0,2,4,1], six:[0,2,4,5], min6:[0,2,4,5]
+};
+function accidentalSuffix(letter,alter){
+  if(alter===0)return '';
+  if(alter===1)return 'is';
+  if(alter===-1){
+    if(letter==='H')return 'b';
+    if(letter==='E'||letter==='A')return 's';
+    return 'es';
+  }
+  if(alter===2)return 'isis';
+  if(alter===-2)return 'eses';
+  return '';
+}
+function spellPitchForLetter(m,letter){
+  const pc=((m%12)+12)%12, nat=NAT_PC[letter];
+  let alter=(pc-nat+12)%12;
+  if(alter>6)alter-=12;
+  const octave=(m-alter-nat)/12-1;
+  return {m,letter,alter,octave,label:letter+accidentalSuffix(letter,alter)};
+}
+function spellChord(ch){
+  if(!ch)return [];
+  const rootLetter=ROOT_LETTER_BY_PC[((ch.root%12)+12)%12];
+  const rootIndex=LETTERS.indexOf(rootLetter);
+  const degrees=CHORD_DEGREES[ch.type]||CHORDS[ch.type].iv.map(()=>0);
+  return ch.notes.map((m,i)=>{
+    const letter=LETTERS[(rootIndex+(degrees[i]||0))%7];
+    return spellPitchForLetter(m,letter);
+  });
+}
+function chordToneLabels(ch){return spellChord(ch).map(n=>n.label)}
+function rootLabel(ch){return spellChord(ch)[0]?.label || DE[ch.root%12]}
 function playCurrent(){if(!current)return;clearHighlights();highlightChord(current.notes);let pm=playMode.value;if(pm==='random')pm=['block','arpUp','arpDown'][Math.floor(Math.random()*3)];let notes=[...current.notes];if(pm==='arpDown')notes.reverse();if(pm==='block')notes.forEach((m,i)=>piano(m,0,1.7,i?0.72:0.82));else notes.forEach((m,i)=>piano(m,i*.22,1.2,i?0.72:0.82));}
-function newChord(){clearNotation('Notation erscheint nach deiner Antwort.');clearHighlights();clearBuild();const list=LEVELS[level.value];const type=list[Math.floor(Math.random()*list.length)];const root=+rootSel.value;const notes=chordNotes(root,type);current={root,type,notes,name:CHORDS[type].n};repeatLeft=maxRepeats;updateRepeatUI();renderWheel();document.querySelectorAll('.slice').forEach(x=>x.classList.remove('correct','wrong'));if(trainMode==='hear'){centerText.textContent='?';centerSub.textContent='Akkord erkennen';setFeedback('Höre genau hin …','Wähle den Akkordtyp im Rad.','');playCurrent()}else{centerText.textContent=DE[root%12]+' '+CHORDS[type].short;centerSub.textContent='Akkord aufbauen';setFeedback('Baue den Akkord','Klicke die passenden Tasten auf dem Klavier.','');mark(root,'root')}}
+function newChord(){clearNotation('Notation erscheint nach deiner Antwort.');clearHighlights();clearBuild();const list=LEVELS[level.value];const type=list[Math.floor(Math.random()*list.length)];const root=+rootSel.value;const notes=chordNotes(root,type);current={root,type,notes,name:CHORDS[type].n};repeatLeft=maxRepeats;updateRepeatUI();renderWheel();document.querySelectorAll('.slice').forEach(x=>x.classList.remove('correct','wrong'));if(trainMode==='hear'){centerText.textContent='?';centerSub.textContent='Akkord erkennen';setFeedback('Höre genau hin …','Wähle den Akkordtyp im Rad.','');playCurrent()}else{centerText.textContent=spellPitchForLetter(root,ROOT_LETTER_BY_PC[root%12]).label+' '+CHORDS[type].short;centerSub.textContent='Akkord aufbauen';setFeedback('Baue den Akkord','Klicke die passenden Tasten auf dem Klavier.','');mark(root,'root')}}
 function repeatChord(){if(!current||repeatLeft<=0)return;repeatLeft--;playCurrent();updateRepeatUI();if(repeatLeft===0)setFeedback('Letzte Wiederholung gespielt','Jetzt bitte antworten oder neuen Akkord starten.','')}
 function answer(type){if(!current||trainMode!=='hear')return;total++;let ok=type===current.type;if(ok){good++;streak++;let pts=100+Math.min(streak*10,100);score+=pts;setFeedback('Richtig! ✔',current.name+' · +'+pts+' Punkte','good')}else{streak=0;setFeedback('Leider nein','Richtig wäre: '+current.name,'bad')}updateStats();showSolution(type,ok)}
-function checkBuild(){if(!current||trainMode!=='build')return;total++;const a=[...new Set(selectedKeys)].sort((x,y)=>x-y),b=[...current.notes].sort((x,y)=>x-y);let ok=a.length===b.length&&a.every((x,i)=>x===b[i]);if(ok){good++;streak++;let pts=120+Math.min(streak*10,100);score+=pts;setFeedback('Richtig aufgebaut! ✔',current.name+' · +'+pts+' Punkte','good')}else{streak=0;setFeedback('Noch nicht ganz','Richtig wäre: '+current.notes.map(m=>DE[m%12]).join(' · '),'bad')}updateStats();showSolution(current.type,ok)}
-function showSolution(chosen,ok=true){if(!current)return;centerText.textContent=current.name;centerSub.textContent=DE[current.root%12]+' · '+current.notes.map(m=>DE[m%12]).join('–');updateNotation(current.notes,current.name);clearHighlights();highlightChord(current.notes);document.querySelectorAll('.slice').forEach(s=>{if(s.dataset.type===current.type)s.classList.add('correct');else if(s.dataset.type===chosen&&!ok)s.classList.add('wrong')});addHistory(current,ok)}
+function checkBuild(){if(!current||trainMode!=='build')return;total++;const a=[...new Set(selectedKeys)].sort((x,y)=>x-y),b=[...current.notes].sort((x,y)=>x-y);let ok=a.length===b.length&&a.every((x,i)=>x===b[i]);if(ok){good++;streak++;let pts=120+Math.min(streak*10,100);score+=pts;setFeedback('Richtig aufgebaut! ✔',current.name+' · +'+pts+' Punkte','good')}else{streak=0;setFeedback('Noch nicht ganz','Richtig wäre: '+chordToneLabels(current).join(' · '),'bad')}updateStats();showSolution(current.type,ok)}
+function showSolution(chosen,ok=true){if(!current)return;centerText.textContent=current.name;centerSub.textContent=rootLabel(current)+' · '+chordToneLabels(current).join('–');updateNotation(current.notes,current.name);clearHighlights();highlightChord(current.notes);document.querySelectorAll('.slice').forEach(s=>{if(s.dataset.type===current.type)s.classList.add('correct');else if(s.dataset.type===chosen&&!ok)s.classList.add('wrong')});addHistory(current,ok)}
 function updateRepeatUI(){repeatCount.textContent=repeatLeft+'/'+maxRepeats;repeatBtn.disabled=!current||repeatLeft<=0}
 function updateStats(){streakEl.textContent=streak;scoreEl.textContent=score;rateEl.textContent=total?Math.round(good/total*100)+'%':'0%'}
 function setFeedback(a,b,cls){feedback.className='feedback '+cls;feedback.innerHTML=a+'<small>'+b+'</small>'}
@@ -53,7 +92,7 @@ function addHistory(ch,ok){
   if(!historyBox||!ch)return;
   let r=document.createElement('div');
   r.className='row';
-  r.innerHTML=`<span>${DE[ch.root%12]} ${CHORDS[ch.type].short}<br><small>${ch.notes.map(m=>DE[m%12]).join(' · ')}</small></span><b class="${ok?'ok':'no'}">${ok?'✔':'✘'}</b>`;
+  r.innerHTML=`<span>${rootLabel(ch)} ${CHORDS[ch.type].short}<br><small>${chordToneLabels(ch).join(' · ')}</small></span><b class="${ok?'ok':'no'}">${ok?'✔':'✘'}</b>`;
   historyBox.prepend(r);
   while(historyBox.children.length>12)historyBox.lastChild.remove();
 }
@@ -69,12 +108,11 @@ function clearBuild(){selectedKeys=[];paintSelection()}
 function paintSelection(){clearHighlights();if(current)mark(current.root,'root');selectedKeys.forEach(m=>mark(m,'sel'))}
 function clearNotation(msg='Notation erscheint nach der Antwort.'){const svg=notation;svg.innerHTML='';drawStaff(svg);let t=document.createElementNS('http://www.w3.org/2000/svg','text');t.setAttribute('x',380);t.setAttribute('y',96);t.setAttribute('fill','#64748b');t.setAttribute('font-size','18');t.setAttribute('font-weight','800');t.setAttribute('text-anchor','middle');t.textContent=msg;svg.append(t)}
 function drawStaff(svg){const y0=56,gap=14;for(let i=0;i<5;i++){let l=document.createElementNS('http://www.w3.org/2000/svg','line');l.setAttribute('x1',90);l.setAttribute('x2',720);l.setAttribute('y1',y0+i*gap);l.setAttribute('y2',y0+i*gap);l.setAttribute('class','staffLine');svg.append(l)}let clef=document.createElementNS('http://www.w3.org/2000/svg','text');clef.setAttribute('x',34);clef.setAttribute('y',113);clef.setAttribute('class','clef');clef.textContent='𝄞';svg.append(clef)}
-function midiStep(m){const steps=[0,0,1,1,2,3,3,4,4,5,5,6];return (Math.floor(m/12)-1)*7+steps[m%12]}
-function noteY(m){const bottomLineE4=4*7+2;return 112-(midiStep(m)-bottomLineE4)*7}
-function accidentalText(m){return [1,3,6,8,10].includes(m%12)?'♯':''}
-function accidentalText(m){return [1,3,6,8,10].includes(m%12)?'♯':''}
-function drawNote(svg,m,x,cls,label,accX=null){
-  const y=noteY(m),acc=accidentalText(m);
+function staffStepFromInfo(info){return info.octave*7+LETTERS.indexOf(info.letter)}
+function noteYFromInfo(info){const bottomLineE4=4*7+2;return 112-(staffStepFromInfo(info)-bottomLineE4)*7}
+function accidentalSymbol(info){return info.alter>0?'♯':(info.alter<0?'♭':'')}
+function drawNote(svg,info,x,cls,label,accX=null){
+  const y=noteYFromInfo(info), acc=accidentalSymbol(info);
   for(let yy=Math.ceil((y-112)/14)*14+112;yy<56;yy+=14){
     let l=document.createElementNS('http://www.w3.org/2000/svg','line');
     l.setAttribute('x1',x-22);l.setAttribute('x2',x+22);l.setAttribute('y1',yy);l.setAttribute('y2',yy);
@@ -90,7 +128,7 @@ function drawNote(svg,m,x,cls,label,accX=null){
     a.setAttribute('x',accX!==null?accX:x-42);
     a.setAttribute('y',y+1);
     a.setAttribute('fill','#101631');
-    a.setAttribute('font-size','27');
+    a.setAttribute('font-size',acc==='♭'?'31':'27');
     a.setAttribute('font-weight','900');
     a.setAttribute('text-anchor','middle');
     a.setAttribute('dominant-baseline','middle');
@@ -112,14 +150,13 @@ function updateNotation(notes,title='Akkord'){
   const svg=notation;
   svg.innerHTML='';
   drawStaff(svg);
-  // Mehr horizontaler Raum: Vorzeichen stehen in eigenen Spalten vor den Notenköpfen,
-  // damit sie weder mit Notenköpfen noch mit Notenhälsen kollidieren.
+  const spelled=spellChord(current);
   const start=230,spacing=72;
-  notes.forEach((m,i)=>{
-    const acc=accidentalText(m);
+  spelled.forEach((info,i)=>{
+    const acc=accidentalSymbol(info);
     const x=start+i*spacing;
     const accX=acc?x-38:null;
-    drawNote(svg,m,x,i===0?'root':'chord',DE[m%12]+Math.floor(m/12-1),accX);
+    drawNote(svg,info,x,i===0?'root':'chord',info.label+Math.floor(info.octave),accX);
   });
   let txt=document.createElementNS('http://www.w3.org/2000/svg','text');
   txt.setAttribute('x',380);txt.setAttribute('y',30);txt.setAttribute('fill','#334155');
